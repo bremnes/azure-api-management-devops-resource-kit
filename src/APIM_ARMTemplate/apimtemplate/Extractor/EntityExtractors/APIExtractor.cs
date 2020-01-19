@@ -330,7 +330,7 @@ namespace Microsoft.Azure.Management.ApiManagement.ArmTemplates.Extract
                 allOperationsTemplateResources.TryAdd(operationName, operationTemplateResources);
             })));
 
-            // to honour the existing order or operations in the json file
+            // to honour the existing order of operations as they were delivered from Azure Rest API
             foreach (var operationName in operationNames)
             {
                 templateResources.AddRange(allOperationsTemplateResources[operationName]);

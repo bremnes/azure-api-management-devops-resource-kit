@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
 using System.Linq;
+using System.Collections.Concurrent;
 
 namespace Microsoft.Azure.Management.ApiManagement.ArmTemplates.Extract
 {
@@ -233,8 +234,10 @@ namespace Microsoft.Azure.Management.ApiManagement.ArmTemplates.Extract
             // pull api operations for service
             string[] operationNames = await GetAllOperationNames(apimname, resourceGroup, apiName);
 
-            foreach (string operationName in operationNames)
+            var allOperationsTemplateResources = new ConcurrentDictionary<string, List<TemplateResource>>();
+            await Task.WhenAll(operationNames.Select(operationName => Task.Run(async () =>
             {
+                var operationTemplateResources = new List<TemplateResource>();
                 string operationDetails = await GetAPIOperationDetailsAsync(apimname, resourceGroup, apiName, operationName);
 
                 Console.WriteLine("'{0}' Operation found", operationName);
@@ -264,7 +267,7 @@ namespace Microsoft.Azure.Management.ApiManagement.ArmTemplates.Extract
                 }
 
                 operationResource.dependsOn = operationDependsOn.ToArray();
-                templateResources.Add(operationResource);
+                operationTemplateResources.Add(operationResource);
 
                 // add operation policy resource to api template
                 try
@@ -296,7 +299,7 @@ namespace Microsoft.Azure.Management.ApiManagement.ArmTemplates.Extract
                         }
                     }
 
-                    templateResources.Add(operationPolicyResource);
+                    operationTemplateResources.Add(operationPolicyResource);
                 }
                 catch (Exception) { }
 
@@ -319,11 +322,20 @@ namespace Microsoft.Azure.Management.ApiManagement.ArmTemplates.Extract
                         operationTagResource.apiVersion = GlobalConstants.APIVersion;
                         operationTagResource.scale = null;
                         operationTagResource.dependsOn = new string[] { $"[resourceId('Microsoft.ApiManagement/service/apis/operations', parameters('ApimServiceName'), '{oApiName}', '{operationResourceName}')]" };
-                        templateResources.Add(operationTagResource);
+                        operationTemplateResources.Add(operationTagResource);
                     }
                 }
                 catch (Exception) { }
+
+                allOperationsTemplateResources.TryAdd(operationName, operationTemplateResources);
+            })));
+
+            // to honour the existing order or operations in the json file
+            foreach (var operationName in operationNames)
+            {
+                templateResources.AddRange(allOperationsTemplateResources[operationName]);
             }
+
             #endregion
 
             #region API Policies
